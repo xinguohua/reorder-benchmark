@@ -1,5 +1,5 @@
 // /usr/local/clang-4.0/bin/clang -emit-llvm -g -c -std=c11 22-openmpi.c  -o 22-openmpi.bc
-// Created by nsas2020 on 24-3-18. (52, 75) (55, 75)  /usr/local/clang-4.0/bin/clang -S -emit-llvm -g -c -std=c11 22-openmpi.c -o 22-openmpi.ll
+// Created by nsas2020 on 24-3-18. (52, 75) (55, 68)  /usr/local/clang-4.0/bin/clang -S -emit-llvm -g -c -std=c11 22-openmpi.c -o 22-openmpi.ll
 // https://github.com/open-mpi/ompi/pull/771/files
 #include <stdatomic.h>
 #include <stdio.h>
@@ -46,7 +46,7 @@ void opal_atomic_wmb() {
 opal_list_item_t* opal_lifo_push_atomic(opal_lifo_t* lifo, opal_list_item_t* item) {
     item->item_free = 1;
     do {
-        opal_list_item_t* next = (opal_list_item_t*)lifo->opal_lifo_head.item;
+        opal_list_item_t* next = lifo->opal_lifo_head.item;
         item->opal_list_next = next;
         opal_atomic_wmb();
         if (atomic_compare_exchange_strong(&lifo->opal_lifo_head.item, &next, item)) {
@@ -63,7 +63,7 @@ opal_list_item_t* opal_lifo_push_atomic(opal_lifo_t* lifo, opal_list_item_t* ite
 // 从 LIFO 取出元素
 opal_list_item_t* opal_lifo_pop_atomic(opal_lifo_t* lifo) {
     opal_list_item_t* item;
-    while ((item = (opal_list_item_t*)lifo->opal_lifo_head.item) != &lifo->opal_lifo_ghost) {
+    while ((item = lifo->opal_lifo_head.item) != &lifo->opal_lifo_ghost) {
         /* ensure it is safe to pop the head */
         if (atomic_exchange(&item->item_free, 1)) {
             continue;

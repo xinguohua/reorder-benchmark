@@ -1,5 +1,5 @@
-// /usr/local/clang-4.0/bin/clang -emit-llvm -g -c 24-mysql.c  -o 24-mysql.bc (22, 66)
-// Created by nsas2020 on 24-3-18.
+// /usr/local/clang-4.0/bin/clang -emit-llvm -g -c 24-mysql.c  -o 24-mysql.bc (21, 65)
+// Created by nsas2020 on 24-3-18.  /usr/local/clang-4.0/bin/clang -S -emit-llvm -g -c -std=c11 24-mysql.c -o 24-mysql.ll
 // https://bugs.mysql.com/bug.php?id=87293
 
 #include <stdatomic.h>
@@ -62,7 +62,7 @@ void myExit() {
     // wmb
 
     if (state() == MUTEX_STATE_WAITERS) {
-        atomic_store(&m_lock_word, MUTEX_STATE_UNLOCKED);
+        m_lock_word = MUTEX_STATE_UNLOCKED;
     } else if (unlock() == MUTEX_STATE_LOCKED) {
         // 如果没有线程在等待，就没有必要唤醒
         return;

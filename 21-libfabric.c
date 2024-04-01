@@ -6,7 +6,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 // 模拟的 resp 结构体
 typedef struct {
@@ -25,28 +24,23 @@ static inline void memory_barrier() {
     __sync_synchronize();
 }
 
-void smr_progress_cmd_atomic(void* peer_smr, uint64_t cmd_data, int err) {
-    Resp* resp;
+void smr_progress_cmd_atomic() {
+    Resp* peer_smr;
+
+    peer_smr = (Resp*)malloc(sizeof(Resp) * 4);
+    int cmd_data = 2;
 
     // 模拟获取 resp 指针
-    resp = (Resp*)smr_get_ptr(peer_smr, cmd_data);
+    Resp* resp = (Resp*)smr_get_ptr(peer_smr, cmd_data);
 
     // 添加内存屏障来确保之前的内存操作完成
     //memory_barrier();
 
     // 更新 resp 状态
-    resp->status = -err;
+    resp->status = -1;
 }
 
 int main() {
-    // 简单的测试
-    Resp* peer_smr = (Resp*)malloc(sizeof(Resp) * 2); // 假设有两个 Resp 结构体
-    int err = 1; // 模拟的错误码
-
-    smr_progress_cmd_atomic(peer_smr, sizeof(Resp), err); // 模拟第二个 Resp 的状态更新
-
-    printf("Resp status: %d\n", peer_smr[1].status); // 应该输出 "-1"
-
-    free(peer_smr);
+    smr_progress_cmd_atomic(); // 模拟第二个 Resp 的状态更新
     return 0;
 }

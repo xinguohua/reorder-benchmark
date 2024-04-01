@@ -5,14 +5,12 @@
 //Linux内核代码 下载4.5
 //https://blog.csdn.net/wtl1992/article/details/121739072
 //queued_spin_lock_slowpath::node 382
-///usr/local/clang-4.0/bin/clang -emit-llvm -g -c 1-Linuxeasy.c  -o 1-Linuxeasy.bc
+///usr/local/clang-4.0/bin/clang -emit-llvm -g -c 1-Linuxeasy.c  -o 1-Linuxeasy.bc (47, 72) (52, 63)
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdbool.h>
-#include <pthread.h>
-#include <time.h>
 #include <unistd.h>
 
 typedef struct mcs_node {
@@ -23,6 +21,11 @@ typedef struct mcs_node {
 typedef struct {
     _Atomic(mcs_node_t*) tail;
 } qspinlock_t;
+
+#define NUM_THREADS 8 // 定义线程数量
+//mcs_node_t nodes[NUM_THREADS]; // 全局数组，存储每个线程的 mcs_node_t 实例
+mcs_node_t global_node;
+qspinlock_t my_lock;
 
 void qspinlock_init(qspinlock_t* lock) {
     lock->tail = NULL;
@@ -71,45 +74,43 @@ void qspin_unlock(qspinlock_t* lock, mcs_node_t* mynode, int i) {
         }
     }
     printf("4W locked   %d\n", i);
-    atomic_store_explicit(&mynode->next->locked, false, memory_order_release);
+    __atomic_thread_fence(__ATOMIC_RELEASE);
+    mynode->next->locked = false;
 }
 
 
-#define NUM_THREADS 8 // 定义线程数量
+void* enter_critical_section(void* arg) {
+    int thread_id = *((int*)arg);
 
-qspinlock_t my_lock;
+    printf("Thread started %d\n", thread_id);
+    qspin_lock(&my_lock, &global_node, thread_id);
+    // Critical section start
+    return NULL;
+}
 
+void* exit_critical_section(void* arg) {
+    int thread_id = *((int*)arg);
 
-void *thread_function(void *arg) {
-    int thread_id = *((int*)arg); // 获取传递过来的线程 ID
-    mcs_node_t* my_node = (mcs_node_t*)malloc(sizeof(mcs_node_t)); // Allocate a new node for each thread
-    printf("Thread started %d\n", thread_id); // 打印线程启动信息
-    qspin_lock(&my_lock, my_node, thread_id);
-
-    // Critical section
+    // Critical section end
     int sleep_time = rand() % 5 + 1; // Generate random sleep time between 1 and 5 seconds
     sleep(sleep_time); // Sleep for random time
 
-    qspin_unlock(&my_lock, my_node, thread_id);
-    printf("Thread finished %d\n", thread_id); // 打印线程结束信息
-
+    qspin_unlock(&my_lock, &global_node, thread_id);
+    printf("Thread finished %d\n", thread_id);
     return NULL;
 }
+
 int main() {
     // Initialize the lock
     qspinlock_init(&my_lock);
-
+    pthread_t thread1, thread2;
+    int thread_id = 1;
     // Create threads
-    pthread_t threads[NUM_THREADS];
-    int i;
-    for (i = 0; i < NUM_THREADS; i++) {
-        pthread_create(&threads[i], NULL, thread_function, (void*)&i);
-    }
+    pthread_create(&thread1, NULL, enter_critical_section, &thread_id);
+    pthread_create(&thread2, NULL, exit_critical_section, &thread_id);
 
-    // Wait for threads to finish
-    for (i = 0; i < NUM_THREADS; i++) {
-        pthread_join(threads[i], NULL);
-    }
 
+    pthread_join(thread1, NULL);
+    pthread_join(thread2, NULL);
     return 0;
 }

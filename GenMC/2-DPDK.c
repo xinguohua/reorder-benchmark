@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
+#include <assert.h>
 /**
  * http://git.dpdk.org/dpdk/tag/?h=v20.11
 lib/librte_eal/include/generic/rte_mcslock.h:47
@@ -21,6 +22,11 @@ typedef struct rte_mcslock {
 } rte_mcslock_t;
 
 
+// 全局MCS锁变量，初始化为NULL
+_Atomic(rte_mcslock_t*) global_lock = NULL;
+
+// 两个全局锁节点变量
+rte_mcslock_t global_node1, global_node2;
 
 /**
  * Take the MCS lock.
@@ -68,6 +74,8 @@ rte_mcslock_lock(_Atomic(rte_mcslock_t *)*msl, _Atomic(rte_mcslock_t *)me, int i
     //atomic_store_explicit(&prev->next, me, memory_order_release);
     // wrong
     atomic_store_explicit(&prev->next, me, memory_order_relaxed);
+    // 死循环assert(me->locked == 1);
+
 
     /* The while-load of me->locked should not move above the previous
      * store to prev->next. Otherwise it will cause a deadlock. Need a
@@ -125,11 +133,6 @@ rte_mcslock_unlock(_Atomic(rte_mcslock_t *) *msl, _Atomic(rte_mcslock_t *)me, in
 // 假设已经包含了前面你提供的 rte_mcslock_t 的定义以及
 // rte_mcslock_lock 和 rte_mcslock_unlock 函数。
 
-// 全局MCS锁变量，初始化为NULL
-_Atomic(rte_mcslock_t*) global_lock = NULL;
-
-// 两个全局锁节点变量
-rte_mcslock_t global_node1, global_node2;
 
 // 加锁函数
 void* thread_lock(void* arg) {

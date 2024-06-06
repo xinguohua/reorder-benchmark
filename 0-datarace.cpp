@@ -5,6 +5,8 @@
 // Created by nsas2020 on 23-11-8.
 // /usr/local/clang-4.0/bin/clang -emit-llvm -g -c 0-datarace.cpp -o datarace1.bc
 //0.005769
+// dynamic
+// /ufo/build/bin/clang -fsanitize=thread -g -o0 -Wall 0-datarace.cpp -o datarace
 #include <stdio.h>
 #include <pthread.h>
 #include <string.h> // 包含字符串操作函数的库

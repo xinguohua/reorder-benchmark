@@ -5,7 +5,7 @@
 //Linux内核代码 下载4.5
 //https://blog.csdn.net/wtl1992/article/details/121739072
 //queued_spin_lock_slowpath::node 382
-///usr/local/clang-4.0/bin/clang -emit-llvm -g -c 1-Linuxeasy.c  -o 1-Linuxeasy.bc (47, 72) (52, 63)
+///usr/local/clang-4.0/bin/clang -emit-llvm -g -c 1-Linuxeasy.c  -o 1-Linuxeasy.bc (47, 72) (52, 63)        /ufo/build/bin/clang -fsanitize=thread -g -o0 -Wall 1-Linuxeasy.c -o 1-Linuxeasy
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -78,39 +78,71 @@ void qspin_unlock(qspinlock_t* lock, mcs_node_t* mynode, int i) {
     mynode->next->locked = false;
 }
 
+// static driver
+//void* enter_critical_section(void* arg) {
+//    int thread_id = *((int*)arg);
+//
+//    printf("Thread started %d\n", thread_id);
+//    qspin_lock(&my_lock, &global_node, thread_id);
+//    // Critical section start
+//    return NULL;
+//}
+//
+//void* exit_critical_section(void* arg) {
+//    int thread_id = *((int*)arg);
+//
+//    // Critical section end
+//    int sleep_time = rand() % 5 + 1; // Generate random sleep time between 1 and 5 seconds
+//    sleep(sleep_time); // Sleep for random time
+//
+//    qspin_unlock(&my_lock, &global_node, thread_id);
+//    printf("Thread finished %d\n", thread_id);
+//    return NULL;
+//}
 
-void* enter_critical_section(void* arg) {
-    int thread_id = *((int*)arg);
 
-    printf("Thread started %d\n", thread_id);
-    qspin_lock(&my_lock, &global_node, thread_id);
-    // Critical section start
+//int main() {
+//    // Initialize the lock
+//    qspinlock_init(&my_lock);
+//    pthread_t thread1, thread2;
+//    int thread_id = 1;
+//    // Create threads
+//    pthread_create(&thread1, NULL, enter_critical_section, &thread_id);
+//    pthread_create(&thread2, NULL, exit_critical_section, &thread_id);
+//
+//
+//    pthread_join(thread1, NULL);
+//    pthread_join(thread2, NULL);
+//    return 0;
+//}
+
+
+//=========dynamic
+
+void* thread_func(void *arg) {
+    qspinlock_init(&my_lock);
+    int i = *(int*)arg;
+    mcs_node_t mynode;
+    qspin_lock(&my_lock, &mynode, i);
+    // 临界区代码，随机休眠一段时间
+    int sleep_time = rand() % 1000; // 随机生成 0 到 999 毫秒的休眠时间
+    usleep(sleep_time * 1000); // usleep 以微秒为单位，因此乘以 1000
+    printf("Thread %d in critical section for %d ms\n", i, sleep_time);
+    qspin_unlock(&my_lock, &mynode, i);
     return NULL;
 }
 
-void* exit_critical_section(void* arg) {
-    int thread_id = *((int*)arg);
-
-    // Critical section end
-    int sleep_time = rand() % 5 + 1; // Generate random sleep time between 1 and 5 seconds
-    sleep(sleep_time); // Sleep for random time
-
-    qspin_unlock(&my_lock, &global_node, thread_id);
-    printf("Thread finished %d\n", thread_id);
-    return NULL;
-}
 
 int main() {
-    // Initialize the lock
-    qspinlock_init(&my_lock);
-    pthread_t thread1, thread2;
-    int thread_id = 1;
-    // Create threads
-    pthread_create(&thread1, NULL, enter_critical_section, &thread_id);
-    pthread_create(&thread2, NULL, exit_critical_section, &thread_id);
+    pthread_t threads[10];
+    int thread_ids[10];
+    for (int i = 0; i < 2; i++) {
+        thread_ids[i] = i;
+        pthread_create(&threads[i], NULL, thread_func, &thread_ids[i]);
+    }
 
-
-    pthread_join(thread1, NULL);
-    pthread_join(thread2, NULL);
+    for (int i = 0; i < 2; i++) {
+        pthread_join(threads[i], NULL);
+    }
     return 0;
 }

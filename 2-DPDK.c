@@ -16,8 +16,8 @@ lib/librte_eal/include/generic/rte_mcslock.h:47
  * /usr/local/clang-4.0/bin/clang -emit-llvm -g -c  2-DPDK.c -o 2-DPDK.bc
  */
 typedef struct rte_mcslock {
-    _Atomic(struct rte_mcslock *)next;
-    atomic_int  locked; /* 1 if the queue locked, 0 otherwise */
+    struct rte_mcslock *next;
+    int  locked; /* 1 if the queue locked, 0 otherwise */
 } rte_mcslock_t;
 
 
@@ -34,14 +34,14 @@ typedef struct rte_mcslock {
  *   lock should use its 'own node'.
  */
 static inline void
-rte_mcslock_lock(_Atomic(rte_mcslock_t *)*msl, _Atomic(rte_mcslock_t *)me, int i)
+rte_mcslock_lock(rte_mcslock_t **msl, rte_mcslock_t *me, int i)
 {
     rte_mcslock_t *prev;
 
     /* Init me node */
     printf("Thread %d: 1: W locked.\n", i);
-    atomic_store_explicit(&me->locked, 1, memory_order_relaxed);
-    atomic_store_explicit(&me->next, NULL, memory_order_relaxed);
+    __atomic_store_n(&me->locked, 1, __ATOMIC_RELAXED);
+    __atomic_store_n(&me->next, NULL, __ATOMIC_RELAXED);
 
     /* If the queue is empty, the exchange operation is enough to acquire
      * the lock. Hence, the exchange operation requires acquire semantics.
@@ -49,7 +49,8 @@ rte_mcslock_lock(_Atomic(rte_mcslock_t *)*msl, _Atomic(rte_mcslock_t *)me, int i
      * visible to other CPUs/threads. Hence, the exchange operation requires
      * release semantics as well.
      */
-    prev = atomic_exchange_explicit(msl, me, memory_order_acq_rel);
+    prev  = __atomic_exchange_n(msl, me, __ATOMIC_ACQ_REL);
+
     if (prev == NULL) {
         /* Queue was empty, no further action required,
          * proceed with lock taken.
@@ -67,20 +68,21 @@ rte_mcslock_lock(_Atomic(rte_mcslock_t *)*msl, _Atomic(rte_mcslock_t *)me, int i
     // right
     //atomic_store_explicit(&prev->next, me, memory_order_release);
     // wrong
-    atomic_store_explicit(&prev->next, me, memory_order_relaxed);
+    __atomic_store_n(&prev->next, me, __ATOMIC_RELEASE);
 
     /* The while-load of me->locked should not move above the previous
      * store to prev->next. Otherwise it will cause a deadlock. Need a
      * store-load barrier.
      */
-    atomic_thread_fence(memory_order_acq_rel);
+    __atomic_thread_fence(__ATOMIC_ACQ_REL);
     /* If the lock has already been acquired, it first atomically
      * places the node at the end of the queue and then proceeds
      * to spin on me->locked until the previous lock holder resets
      * the me->locked using mcslock_unlock().
      */
-    while (atomic_load_explicit(&me->locked, memory_order_acquire))
+    while (__atomic_load_n(&me->locked, __ATOMIC_ACQUIRE)) {
         sched_yield();
+    }
 }
 
 /**
@@ -92,33 +94,35 @@ rte_mcslock_lock(_Atomic(rte_mcslock_t *)*msl, _Atomic(rte_mcslock_t *)me, int i
  *   A pointer to the node of MCS lock passed in rte_mcslock_lock.
  */
 static inline void
-rte_mcslock_unlock(_Atomic(rte_mcslock_t *) *msl, _Atomic(rte_mcslock_t *)me, int  i)
+rte_mcslock_unlock(rte_mcslock_t **msl, rte_mcslock_t *me, int  i)
 {
     printf("Thread %d: 3: R.next \n", i);
     /* Check if there are more nodes in the queue. */
-    if (atomic_load_explicit(&me->next, memory_order_relaxed) == NULL) {
+    if (__atomic_load_n(&me->next, __ATOMIC_RELAXED) == NULL) {
+        printf("Thread %d: NULL \n", i);
+
         /* No, last member in the queue. */
-        rte_mcslock_t *save_me = atomic_load_explicit(&me, memory_order_relaxed);
+        rte_mcslock_t *save_me = me;
 
         /* Release the lock by setting it to NULL */
-        if (atomic_compare_exchange_strong_explicit(msl, &save_me, NULL, memory_order_release, memory_order_relaxed))
+        if (__atomic_compare_exchange_n(msl, &save_me, NULL, 0, __ATOMIC_RELEASE, __ATOMIC_RELAXED))
             return;
 
         /* Speculative execution would be allowed to read in the
          * while-loop first. This has the potential to cause a
          * deadlock. Need a load barrier.
          */
-        atomic_thread_fence(memory_order_acquire);
+        __atomic_thread_fence(__ATOMIC_ACQUIRE);
         /* More nodes added to the queue by other CPUs.
          * Wait until the next pointer is set.
          */
 
-        while (atomic_load_explicit(&me->next, memory_order_relaxed) == NULL)
+        while (__atomic_load_n(&me->next, __ATOMIC_RELAXED) == NULL)
             sched_yield();
     }
     printf("Thread %d: 4: W.locked \n", i);
     /* Pass lock to next waiter. */
-    atomic_store_explicit(&me->next->locked, 0, memory_order_release);
+    __atomic_store_n(&me->next->locked, 0, __ATOMIC_RELEASE);
 }
 
 
@@ -126,7 +130,7 @@ rte_mcslock_unlock(_Atomic(rte_mcslock_t *) *msl, _Atomic(rte_mcslock_t *)me, in
 // rte_mcslock_lock 和 rte_mcslock_unlock 函数。
 
 // 全局MCS锁变量，初始化为NULL
-_Atomic(rte_mcslock_t*) global_lock = NULL;
+rte_mcslock_t* global_lock = NULL;
 
 // 两个全局锁节点变量
 rte_mcslock_t global_node1, global_node2;
@@ -186,13 +190,12 @@ void* thread_func(void* arg) {
 
     // 获取锁
     rte_mcslock_lock(&global_lock, node, thread_id);
-    if (thread_id == 1)  usleep(2300); // usleep 以微秒为单位，因此乘以 1000
+    if (thread_id == 0)  usleep(2000); // usleep 以微秒为单位，因此乘以 1000
 
     // 临界区代码
-    printf("Thread %d: 临界区开始\n", thread_id);
+    printf("Thread %d: start\n", thread_id);
     // 模拟一些工作
-    sleep(1);
-    printf("Thread %d: 临界区结束\n", thread_id);
+    printf("Thread %d: end\n", thread_id);
 
     // 释放锁
     rte_mcslock_unlock(&global_lock, node, thread_id);
@@ -203,21 +206,19 @@ void* thread_func(void* arg) {
 
 int main() {
     pthread_t threads[2];
-    int thread_ids[2] = {1, 2};
 
     // 初始化全局节点
-    atomic_init(&global_node1.next, NULL);
-    atomic_init(&global_node1.locked, 0);
-    atomic_init(&global_node2.next, NULL);
-    atomic_init(&global_node2.locked, 0);
+    global_node1.next = NULL;
+    global_node1.locked = 0;
+    global_node2.next = NULL;
+    global_node2.locked = 0;
 
     // 创建线程
-    for (int i = 0; i < 2; i++) {
-        thread_ids[i] = i;
+    for (int i = 0; i < 2; i++){
         if (i == 1){
-            usleep(100); // usleep 以微秒为单位，因此乘以 1000
+            usleep(300); // usleep 以微秒为单位，因此乘以 1000
         }
-        pthread_create(&threads[i], NULL, thread_func, &thread_ids[i]);
+        pthread_create(&threads[i], NULL, thread_func, &i);
     }
 
     // 等待线程结束

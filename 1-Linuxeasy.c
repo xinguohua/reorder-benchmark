@@ -19,12 +19,11 @@ typedef struct mcs_node {
 } mcs_node_t;
 
 typedef struct {
-    _Atomic(mcs_node_t*) tail;
+    mcs_node_t* tail;
 } qspinlock_t;
 
 #define NUM_THREADS 8 // 定义线程数量
 //mcs_node_t nodes[NUM_THREADS]; // 全局数组，存储每个线程的 mcs_node_t 实例
-mcs_node_t global_node;
 qspinlock_t my_lock;
 
 void qspinlock_init(qspinlock_t* lock) {
@@ -51,8 +50,8 @@ void qspin_lock(qspinlock_t* lock, mcs_node_t* mynode, int i) {
     mynode->next = NULL;
     mynode->locked = true;
     printf("1W locked  %d\n", i);
-    mcs_node_t* prev = lock->tail; //
-    lock->tail = mynode;
+    mcs_node_t* prev  = __sync_lock_test_and_set(&lock->tail, mynode);
+
     if (prev != NULL) {
         prev->next = mynode;
         // 1,2 may order
@@ -66,7 +65,7 @@ void qspin_lock(qspinlock_t* lock, mcs_node_t* mynode, int i) {
 void qspin_unlock(qspinlock_t* lock, mcs_node_t* mynode, int i) {
     printf("3R next   %d\n", i);
     if (!mynode->next) {
-        if (atomic_compare_exchange_strong_explicit(&lock->tail, &mynode, NULL, memory_order_release, memory_order_relaxed)) {
+        if (__sync_bool_compare_and_swap(&lock->tail, mynode, NULL)) {
             return;
         }
         while (!mynode->next) {
@@ -77,6 +76,8 @@ void qspin_unlock(qspinlock_t* lock, mcs_node_t* mynode, int i) {
     __atomic_thread_fence(__ATOMIC_RELEASE);
     mynode->next->locked = false;
 }
+
+
 
 // static driver
 //void* enter_critical_section(void* arg) {
@@ -120,24 +121,28 @@ void qspin_unlock(qspinlock_t* lock, mcs_node_t* mynode, int i) {
 //=========dynamic
 
 void* thread_func(void *arg) {
-    qspinlock_init(&my_lock);
     int i = *(int*)arg;
     mcs_node_t mynode;
     qspin_lock(&my_lock, &mynode, i);
-    // 临界区代码，随机休眠一段时间
-    int sleep_time = rand() % 1000; // 随机生成 0 到 999 毫秒的休眠时间
-    usleep(sleep_time * 1000); // usleep 以微秒为单位，因此乘以 1000
-    printf("Thread %d in critical section for %d ms\n", i, sleep_time);
+    if (i == 0){
+        usleep(2300); // usleep 以微秒为单位，因此乘以 1000
+    }
+    printf("Thread %d in critical section for ms\n", i);
+
     qspin_unlock(&my_lock, &mynode, i);
     return NULL;
 }
 
 
 int main() {
+    qspinlock_init(&my_lock);
     pthread_t threads[10];
     int thread_ids[10];
     for (int i = 0; i < 2; i++) {
         thread_ids[i] = i;
+        if (i == 1){
+            usleep(100); // usleep 以微秒为单位，因此乘以 1000
+        }
         pthread_create(&threads[i], NULL, thread_func, &thread_ids[i]);
     }
 

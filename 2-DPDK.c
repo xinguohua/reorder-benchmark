@@ -131,48 +131,98 @@ _Atomic(rte_mcslock_t*) global_lock = NULL;
 // 两个全局锁节点变量
 rte_mcslock_t global_node1, global_node2;
 
-// 加锁函数
-void* thread_lock(void* arg) {
-    rte_mcslock_t* node = (rte_mcslock_t*)arg;
+//// 加锁函数
+//void* thread_lock(void* arg) {
+//    rte_mcslock_t* node = (rte_mcslock_t*)arg;
+//
+//    // 加锁操作
+//    rte_mcslock_lock(&global_lock, node, pthread_self());
+//    printf("Thread %lu: Lock acquired.\n", pthread_self());
+//    return NULL;
+//}
+//
+//// 解锁函数
+//void* thread_unlock(void* arg) {
+//    rte_mcslock_t* node = (rte_mcslock_t*)arg;
+//    // 解锁操作
+//    rte_mcslock_unlock(&global_lock, node, pthread_self());
+//    printf("Thread %lu: Lock released.\n", pthread_self());
+//    return NULL;
+//}
+//
+//// 主函数
+//int main() {
+//    pthread_t thread1, thread2, thread3, thread4;
+//
+//    // 初始化节点
+//    global_node1.locked = ATOMIC_VAR_INIT(0); // 表示此节点初始时未锁定
+//    global_node1.next = ATOMIC_VAR_INIT(NULL);
+//    global_node2.locked = ATOMIC_VAR_INIT(0); // 同上
+//    global_node2.next = ATOMIC_VAR_INIT(NULL);
+//
+//    // 创建线程进行加锁和解锁操作
+//    pthread_create(&thread1, NULL, thread_lock, &global_node1);
+//    pthread_create(&thread2, NULL, thread_unlock, &global_node1);
+//    pthread_create(&thread3, NULL, thread_lock, &global_node2);
+//    pthread_create(&thread4, NULL, thread_unlock, &global_node2);
+//
+//    // 等待线程结束
+//    pthread_join(thread1, NULL);
+//    pthread_join(thread2, NULL);
+//    pthread_join(thread3, NULL);
+//    pthread_join(thread4, NULL);
+//
+//    printf("All threads have finished execution.\n");
+//
+//    return 0;
+//}
 
-    // 加锁操作
-    rte_mcslock_lock(&global_lock, node, pthread_self());
-    printf("Thread %lu: Lock acquired.\n", pthread_self());
+
+// ===========dynamic
+
+void* thread_func(void* arg) {
+    int thread_id = *(int*)arg;
+    rte_mcslock_t* node = (thread_id == 1) ? &global_node1 : &global_node2;
+
+    // 获取锁
+    rte_mcslock_lock(&global_lock, node, thread_id);
+    if (thread_id == 1)  usleep(2300); // usleep 以微秒为单位，因此乘以 1000
+
+    // 临界区代码
+    printf("Thread %d: 临界区开始\n", thread_id);
+    // 模拟一些工作
+    sleep(1);
+    printf("Thread %d: 临界区结束\n", thread_id);
+
+    // 释放锁
+    rte_mcslock_unlock(&global_lock, node, thread_id);
+
     return NULL;
 }
 
-// 解锁函数
-void* thread_unlock(void* arg) {
-    rte_mcslock_t* node = (rte_mcslock_t*)arg;
-    // 解锁操作
-    rte_mcslock_unlock(&global_lock, node, pthread_self());
-    printf("Thread %lu: Lock released.\n", pthread_self());
-    return NULL;
-}
 
-// 主函数
 int main() {
-    pthread_t thread1, thread2, thread3, thread4;
+    pthread_t threads[2];
+    int thread_ids[2] = {1, 2};
 
-    // 初始化节点
-    global_node1.locked = ATOMIC_VAR_INIT(0); // 表示此节点初始时未锁定
-    global_node1.next = ATOMIC_VAR_INIT(NULL);
-    global_node2.locked = ATOMIC_VAR_INIT(0); // 同上
-    global_node2.next = ATOMIC_VAR_INIT(NULL);
+    // 初始化全局节点
+    atomic_init(&global_node1.next, NULL);
+    atomic_init(&global_node1.locked, 0);
+    atomic_init(&global_node2.next, NULL);
+    atomic_init(&global_node2.locked, 0);
 
-    // 创建线程进行加锁和解锁操作
-    pthread_create(&thread1, NULL, thread_lock, &global_node1);
-    pthread_create(&thread2, NULL, thread_unlock, &global_node1);
-    pthread_create(&thread3, NULL, thread_lock, &global_node2);
-    pthread_create(&thread4, NULL, thread_unlock, &global_node2);
+    // 创建线程
+    for (int i = 0; i < 2; i++) {
+        thread_ids[i] = i;
+        if (i == 1){
+            usleep(100); // usleep 以微秒为单位，因此乘以 1000
+        }
+        pthread_create(&threads[i], NULL, thread_func, &thread_ids[i]);
+    }
 
     // 等待线程结束
-    pthread_join(thread1, NULL);
-    pthread_join(thread2, NULL);
-    pthread_join(thread3, NULL);
-    pthread_join(thread4, NULL);
-
-    printf("All threads have finished execution.\n");
+    pthread_join(threads[0], NULL);
+    pthread_join(threads[1], NULL);
 
     return 0;
 }

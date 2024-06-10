@@ -49,9 +49,11 @@ rte_mcslock_lock(rte_mcslock_t **msl, rte_mcslock_t *me, int i)
      * visible to other CPUs/threads. Hence, the exchange operation requires
      * release semantics as well.
      */
-    prev  = __atomic_exchange_n(msl, me, __ATOMIC_ACQ_REL);
+    prev  = __sync_lock_test_and_set(msl, me);
 
     if (prev == NULL) {
+        printf("Thread %d: PRE NULL\n", i);
+
         /* Queue was empty, no further action required,
          * proceed with lock taken.
          */
@@ -68,7 +70,7 @@ rte_mcslock_lock(rte_mcslock_t **msl, rte_mcslock_t *me, int i)
     // right
     //atomic_store_explicit(&prev->next, me, memory_order_release);
     // wrong
-    __atomic_store_n(&prev->next, me, __ATOMIC_RELEASE);
+     prev->next = me;
 
     /* The while-load of me->locked should not move above the previous
      * store to prev->next. Otherwise it will cause a deadlock. Need a
@@ -98,7 +100,7 @@ rte_mcslock_unlock(rte_mcslock_t **msl, rte_mcslock_t *me, int  i)
 {
     printf("Thread %d: 3: R.next \n", i);
     /* Check if there are more nodes in the queue. */
-    if (__atomic_load_n(&me->next, __ATOMIC_RELAXED) == NULL) {
+    if (me->next  == NULL) {
         printf("Thread %d: NULL \n", i);
 
         /* No, last member in the queue. */
@@ -190,7 +192,7 @@ void* thread_func(void* arg) {
 
     // 获取锁
     rte_mcslock_lock(&global_lock, node, thread_id);
-    if (thread_id == 0)  usleep(2000); // usleep 以微秒为单位，因此乘以 1000
+    if (thread_id == 0)  usleep(3000); // usleep 以微秒为单位，因此乘以 1000
 
     // 临界区代码
     printf("Thread %d: start\n", thread_id);
@@ -216,7 +218,7 @@ int main() {
     // 创建线程
     for (int i = 0; i < 2; i++){
         if (i == 1){
-            usleep(300); // usleep 以微秒为单位，因此乘以 1000
+            usleep(150); // usleep 以微秒为单位，因此乘以 1000
         }
         pthread_create(&threads[i], NULL, thread_func, &i);
     }

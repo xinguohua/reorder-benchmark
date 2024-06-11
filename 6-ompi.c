@@ -33,8 +33,6 @@ int ompi_interlib_declare(myreg_t *trk) {
     trk->active = true;
     printf("2\n");
 
-    trk->status = OPAL_ERROR; // 初始状态设置为错误
-
     // 使用循环代替OMPI_LAZY_WAIT_FOR_COMPLETION宏
     while (trk->active) {
         opal_progress();
@@ -42,7 +40,7 @@ int ompi_interlib_declare(myreg_t *trk) {
     }
 
     if (OPAL_SUCCESS != trk->status) {
-        return trk->status;
+        return OPAL_ERROR;
     }
 
     return OPAL_SUCCESS;

@@ -29,7 +29,7 @@ void SimpleEnter(ObjectWaiter* node) {
     node->next = entryList;
     entryList = node;
     while (node->state == TS_ENTER) {
-        printf("2222");
+        printf("2222\n");
         sem_wait(&semaphore); // 等待信号量
     }
 }
@@ -45,7 +45,7 @@ void SimpleExit() {
 
     // Simulating unlocking
     if (w != NULL) {
-        printf("111");
+        printf("111\n");
         sem_post(&semaphore);
         // need barier OrderAccess::loadstore();
         w->state = TS_RUN;

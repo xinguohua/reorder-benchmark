@@ -8,7 +8,7 @@
 #include <unistd.h>
 
 const int VMXNET3_NUM_RX_DESC = 512; // 假设的接收描述符的数量
-const int VMXNET3_RX_FILL = 100; // 假设的需要填充的数据包数量
+const int VMXNET3_RX_FILL = 2; // 假设的需要填充的数据包数量
 const int MAX_PACKET_LEN = 1500; // 假设的最大数据包长度
 
 // 假设的描述符结构体
@@ -18,11 +18,11 @@ struct Descriptor {
 };
 
 struct Descriptor descriptors[512];
-int product_count;
+int product_count = 0;
 int consumed_count = 0;
 
 void* refill(void* arg) {
-    if (consumed_count < product_count) {
+    while (consumed_count < product_count) {
         descriptors[consumed_count % VMXNET3_NUM_RX_DESC].address = 1111; // Example address
         descriptors[consumed_count % VMXNET3_NUM_RX_DESC].length = MAX_PACKET_LEN;
         consumed_count++;
@@ -44,8 +44,8 @@ void* receive_handler(void* arg){
 int main() {
     pthread_t producer_thread, consumer_thread;
 
-    pthread_create(&producer_thread, NULL, refill, NULL);
-    pthread_create(&consumer_thread, NULL, receive_handler, NULL);
+    pthread_create(&producer_thread, NULL, receive_handler, NULL);
+    pthread_create(&consumer_thread, NULL, refill, NULL);
 
     pthread_join(producer_thread, NULL);
     pthread_join(consumer_thread, NULL);

@@ -10,17 +10,12 @@
 #include <unistd.h>
 
 typedef struct {
-    pthread_mutex_t mutex;
     unsigned int nlock;
     pthread_t locked_by;
     int recursive;
 } CustomLock;
+CustomLock lock = {0, 0, 0}; // 初始化锁
 
-void custom_lock_init(CustomLock *lock, int recursive) {
-    lock->nlock = 0;
-    lock->locked_by = 0;
-    lock->recursive = recursive;
-}
 
 int is_locked_by_me(const CustomLock *lock) {
     return lock->nlock > 0 && pthread_equal(lock->locked_by, pthread_self());
@@ -30,7 +25,7 @@ int is_locked_by_me(const CustomLock *lock) {
 void _post_lock(CustomLock *lock) {
     if (!lock->recursive)
         assert(lock->nlock == 0);
-
+    printf("1111");
     lock->locked_by = pthread_self();
     lock->nlock++;
 }
@@ -56,7 +51,6 @@ void* check_lock_thread(void* arg) {
 
 int main() {
     pthread_t t1, t2;
-    CustomLock lock = {0, 0, 0}; // 初始化锁
 
     // 创建一个线程用于尝试锁定
     if(pthread_create(&t1, NULL, lock_thread, &lock)) {

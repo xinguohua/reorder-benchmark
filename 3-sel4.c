@@ -15,14 +15,14 @@ typedef enum {
 
 
 typedef struct clh_qnode {
-    clh_qnode_state_t value;
+    _Atomic(clh_qnode_state_t) value;
     struct clh_qnode* next;
 } clh_qnode_t;
 
 #define MAX_CPUS 256
 
 typedef struct {
-    clh_qnode_t* head;
+    _Atomic(clh_qnode_t*) heads[MAX_CPUS]; // 为每个CPU单独设置一个头节点
     clh_qnode_t* node_owners[MAX_CPUS]; // 每个CPU的锁节点所有者
 } big_kernel_lock_t;
 
@@ -37,24 +37,26 @@ void clh_lock_init() {
         big_kernel_lock.node_owners[i]-> next = NULL;
         atomic_store(&big_kernel_lock.node_owners[i]->value, CLHState_Granted);
     }
-    big_kernel_lock.head= malloc(sizeof(clh_qnode_t));
-    big_kernel_lock.head-> next = NULL;
-    atomic_store(&big_kernel_lock.head->value, CLHState_Granted);
+    for (int i = 0; i < MAX_CPUS; ++i) {
+        big_kernel_lock.heads[i] = malloc(sizeof(clh_qnode_t));
+        big_kernel_lock.heads[i]-> next = NULL;
+        atomic_store(&big_kernel_lock.heads[i]->value, CLHState_Granted);
+    }
 }
 
 
 static inline void clh_lock_acquire(int cpu) {
     // 将当前节点状态设置为等待
     clh_qnode_t *prev;
-    printf("cpu%d --1 W value\n", cpu);
+    printf("cpu%d --1 W value", cpu);
     big_kernel_lock.node_owners[cpu]->value = CLHState_Pending;
 
     // 原子地插入当前节点到队列尾部，并获取之前的尾节点
     // 此操作同时设置了当前节点为新的队列尾部
-    prev = atomic_exchange_explicit(&big_kernel_lock.head, big_kernel_lock.node_owners[cpu], memory_order_acq_rel);
+    prev = atomic_exchange_explicit(&big_kernel_lock.heads[cpu], big_kernel_lock.node_owners[cpu], memory_order_acquire);
     // right
-   // prev = atomic_exchange_explicit(&big_kernel_lock.heads[cpu], big_kernel_lock.node_owners[cpu], memory_order_acq_rel);
-    printf("cpu%d --2 W next pre %p\n", cpu, prev);
+    // prev = atomic_exchange_explicit(&big_kernel_lock.heads[cpu], big_kernel_lock.node_owners[cpu], memory_order_acq_rel);
+    printf("cpu%d --2 W next", cpu);
     big_kernel_lock.node_owners[cpu]->next = prev;
 
     // 循环等待前一个节点释放锁，即其状态变为已授予
@@ -75,9 +77,9 @@ void clh_lock_release(int cpu) {
     atomic_thread_fence(memory_order_release);
 
     // 将节点的状态设置为已授予，让下一个等待的线程可以获取锁
-    printf("cpu%d --3 W value\n", cpu);
+    printf("cpu%d --3 W value", cpu);
     big_kernel_lock.node_owners[cpu]->value = CLHState_Granted;
-    printf("cpu%d --4 W next\n", cpu);
+    printf("cpu%d --4 W next", cpu);
     big_kernel_lock.node_owners[cpu] = big_kernel_lock.node_owners[cpu]->next;
 }
 
@@ -102,17 +104,21 @@ void* thread_func(void *arg) {
 int main() {
     int num_cpus = 5; // 假设有4个CPU核心
     pthread_t threads[num_cpus];
-    int cpu_ids[num_cpus]; // 用于存储 CPU ID 的数组
-    init_spinlock();
 
     clh_lock_init();
 
-    for (int i = 0; i < 2; i++) {
-        cpu_ids[i] = i;
-        pthread_create(&threads[i], NULL, thread_func, &cpu_ids[i]);
+    for (int i = 0; i < num_cpus; i++) {
+        for (int j=0; j< 3; j++){
+            pthread_create(&threads[i], NULL, thread_func, &i);
+        }
+
     }
-    for (int i = 0; i < 1; i++) {
-        pthread_join(threads[i], NULL);
+
+    for (int i = 0; i < num_cpus; i++) {
+        for (int j=0; j< 3; j++) {
+            pthread_join(threads[i], NULL);
+        }
     }
+
     return 0;
 }

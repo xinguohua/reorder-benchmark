@@ -9,8 +9,8 @@
 #include <pthread.h>
 #include <unistd.h> // 为了使用sleep函数
 
-#define PUSH_OPERATIONS 1000
-#define POP_OPERATIONS 1000
+#define PUSH_OPERATIONS 1
+#define POP_OPERATIONS 1
 
 
 // 模拟 OPAL 库中的原子操作和数据结构，实际使用时需要引入相应的库
@@ -28,22 +28,14 @@ typedef struct {
     opal_list_item_t opal_lifo_ghost; // 用作哨兵节点
 } opal_lifo_t;
 
-// 原子比较并交换操作，实际实现应使用硬件支持的原子操作
-int opal_atomic_cmpset_ptr(volatile opal_list_item_t** addr, opal_list_item_t* oldval, opal_list_item_t* newval) {
-    if (*addr == oldval) {
-        *addr = newval;
-        return 1;
-    }
-    return 0;
-}
-
+opal_list_item_t* item;
 // 原子写内存屏障
 void opal_atomic_wmb() {
     // 实际实现需要根据平台进行内存屏障操作
 }
 
 // 添加元素到 LIFO
-opal_list_item_t* opal_lifo_push_atomic(opal_lifo_t* lifo, opal_list_item_t* item) {
+opal_list_item_t* opal_lifo_push_atomic(opal_lifo_t* lifo) {
     item->item_free = 1;
     do {
         opal_list_item_t* next = lifo->opal_lifo_head.item;
@@ -62,10 +54,9 @@ opal_list_item_t* opal_lifo_push_atomic(opal_lifo_t* lifo, opal_list_item_t* ite
 
 // 从 LIFO 取出元素
 opal_list_item_t* opal_lifo_pop_atomic(opal_lifo_t* lifo) {
-    opal_list_item_t* item;
     while ((item = lifo->opal_lifo_head.item) != &lifo->opal_lifo_ghost) {
         /* ensure it is safe to pop the head */
-        if (atomic_exchange(&item->item_free, 1)) {
+        if (item->item_free ==1) {
             continue;
         }
         printf("3");
@@ -87,10 +78,7 @@ opal_lifo_t lifo;
 // 推入操作线程函数
 void* push_thread_func(void* arg) {
     for (int i = 0; i < PUSH_OPERATIONS; ++i) {
-        opal_list_item_t* item = malloc(sizeof(opal_list_item_t));
-        opal_lifo_push_atomic(&lifo, item);
-        // 可选：在高负载下，暂时让出CPU以观察竞争条件
-        usleep(100); // 暂停100微秒
+        opal_lifo_push_atomic(&lifo);
     }
     return NULL;
 }
@@ -99,23 +87,18 @@ void* push_thread_func(void* arg) {
 void* pop_thread_func(void* arg) {
     for (int i = 0; i < POP_OPERATIONS; ++i) {
         opal_list_item_t* item = opal_lifo_pop_atomic(&lifo);
-        if (item) {
-            // 处理弹出的元素
-            free(item);
-        }
-        // 可选：在高负载下，暂时让出CPU以观察竞争条件
-        usleep(100); // 暂停100微秒
     }
     return NULL;
 }
 
-void opal_lifo_init(opal_lifo_t* lifo) {
+void opal_lifo_init() {
     // 初始化幽灵节点。在实际的库中，可能需要更复杂的初始化。
-    lifo->opal_lifo_ghost.item_free = 0; // 假设item_free = 0表示节点未被使用
-    lifo->opal_lifo_ghost.opal_list_next = NULL; // 幽灵节点没有下一个节点
+    lifo.opal_lifo_ghost.item_free = 0; // 假设item_free = 0表示节点未被使用
+    lifo.opal_lifo_ghost.opal_list_next = NULL; // 幽灵节点没有下一个节点
+    item = malloc(sizeof(opal_list_item_t));
 
     // 设置LIFO的头部指向幽灵节点。这表示LIFO开始时为空。
-    lifo->opal_lifo_head.item = &lifo->opal_lifo_ghost;
+    lifo.opal_lifo_head.item = &lifo.opal_lifo_ghost;
 }
 
 
@@ -123,13 +106,14 @@ int main() {
     pthread_t push_thread, pop_thread;
 
     // 初始化LIFO
-    opal_lifo_init(&lifo);
+    opal_lifo_init();
 
     // 创建推入和弹出操作的线程
     if (pthread_create(&push_thread, NULL, push_thread_func, NULL) != 0) {
         perror("Failed to create push thread");
         return 1;
     }
+    sleep(1);
     if (pthread_create(&pop_thread, NULL, pop_thread_func, NULL) != 0) {
         perror("Failed to create pop thread");
         return 1;

@@ -2,12 +2,20 @@
 // Created by nsas2020 on 24-3-15.
 // https://github.com/seL4/seL4/pull/199/commits/8ba22dcdc5fa667b41db6eb80b434 21a84868398
 // /usr/local/clang-4.0/bin/clang -emit-llvm -g -c  3-sel4.c -o 3-sel4.bc
+//Strengthen the clh_lock_acquire to use release on the atomic_exchange
+//        that makes the node public. Otherwise (on ARM & RISCV), the store to
+//        the node value which sets its state to CLHState_Pending can become
+//visible some time after the node is visible.
+//In that window of time, the next thread which attempts to acquire the
+//lock will still see the old state (CLHState_Granted) and enters the
+//        critical section, leading to a mutual exclusion violation.   48 53
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <unistd.h>
 
 // CLH节点
 typedef struct clh_node {
@@ -53,22 +61,32 @@ void clh_unlock(clh_lock_t* lock) {
     atomic_store(&my_node->locked, false);
 }
 
+typedef struct thread_arg {
+    clh_lock_t* lock;
+    int thread_num;
+} thread_arg_t;
+
 void* thread_func(void* arg) {
-    clh_lock_t* lock = (clh_lock_t*)arg;
+    thread_arg_t* thread_arg = (thread_arg_t*)arg;
+    clh_lock_t* lock = thread_arg->lock;
+    int thread_num = thread_arg->thread_num;
     clh_lock(lock);
     printf("Thread %lu acquired the lock\n", pthread_self());
+    if (thread_num ==1) usleep(1000);
     clh_unlock(lock);
     printf("Thread %lu released the lock\n", pthread_self());
     return NULL;
 }
 
+
 int main() {
     clh_lock_t lock;
     clh_lock_init(&lock);
-
+    thread_arg_t arg1 = { .lock = &lock, .thread_num = 1 };
+    thread_arg_t arg2 = { .lock = &lock, .thread_num = 2 };
     pthread_t t1, t2;
-    pthread_create(&t1, NULL, thread_func, &lock);
-    pthread_create(&t2, NULL, thread_func, &lock);
+    pthread_create(&t1, NULL, thread_func, &arg1);
+    pthread_create(&t2, NULL, thread_func, &arg2);
 
     pthread_join(t1, NULL);
     pthread_join(t2, NULL);

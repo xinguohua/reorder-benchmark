@@ -8,7 +8,7 @@
 #include <unistd.h> // 为了使用 usleep
 
 #define NUM_BUFFERS 192
-#define NUM_THREADS 96
+#define NUM_THREADS 2
 
 int memory[NUM_BUFFERS];
 

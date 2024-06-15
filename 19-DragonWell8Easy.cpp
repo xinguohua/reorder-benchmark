@@ -58,7 +58,7 @@ void* threadRoutine(void* arg) {
 
 // 示例使用
 int main() {
-    const int NUM_THREADS = 5;
+    const int NUM_THREADS = 2;
     pthread_t threads[NUM_THREADS];
 
     // 创建多个线程，每个都尝试获取或创建PackageEntryTable实例

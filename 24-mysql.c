@@ -83,7 +83,7 @@ void* worker(void* arg) {
 }
 
 int main() {
-    const int NUM_THREADS = 5;
+    const int NUM_THREADS = 2;
     pthread_t threads[NUM_THREADS];
 
     for (long i = 0; i < NUM_THREADS; i++) {

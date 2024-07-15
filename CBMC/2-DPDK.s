@@ -248,7 +248,7 @@ thread_lock:
 	.size	thread_lock, .-thread_lock
 	.section	.rodata
 .LC5:
-	.string	"Thread %lu: Lock released.\n"
+	.string	"Thread %lu: Lock relea.\n"
 	.text
 	.globl	thread_unlock
 	.type	thread_unlock, @function

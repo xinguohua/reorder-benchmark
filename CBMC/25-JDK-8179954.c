@@ -1,7 +1,7 @@
-// /usr/local/clang-4.0/bin/clang -emit-llvm -g -c 26-ompi.c  -o 26-ompi.bc
+// /usr/local/clang-4.0/bin/clang -emit-llvm -g -c 25-JDK-8179954.c  -o 25-JDK-8179954.bc
 // Created by nsas2020 on 24-7-14.
 // https://bugs.openjdk.org/browse/JDK-8179954
-
+#include <assert.h>
 #include <stdio.h>
 #include <pthread.h>
 
@@ -41,6 +41,7 @@ int main() {
 
     // 等待线程2完成
     pthread_join(thread2, NULL);
+    assert(r1 == 0 && r2 == 0);
 
     // 打印结果
     printf("r1 = %d, r2 = %d\n", r1, r2);
